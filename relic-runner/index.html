@@ -78,9 +78,8 @@
     const GROUND       = 0.8;   // player ground level as a fraction of screen height
 
     // Swipe tuning
-    const SWIPE_MIN_PX = 28;    // minimum move before we consider it a swipe
-    const SWIPE_MAX_MS = 280;   // ignore very slow drags
-    const SWIPE_COOLDOWN_MS = 120; // prevent multiple lane changes from one gesture
+    const SWIPE_MIN_PX = 18;    // minimum move before we consider it a swipe
+    const SWIPE_COOLDOWN_MS = 110; // prevent multiple lane changes from one gesture
 
     // --- Cached DOM references ---
     const canvas   = document.getElementById("canvas");
@@ -168,7 +167,6 @@
         ctx.fillRect(ox - 20, oy - 20, 40, 40);
 
         // Hit: near ground level, not in mid-jump, and close to lane center.
-        // Using lanePos makes transitions feel fair while still requiring you to "be" in the lane.
         if (obs.z > 0.8 && obs.z < 1 && !jumpY) {
           const laneDelta = Math.abs(obs.lane - lanePos);
           if (laneDelta < 0.35) {
@@ -222,84 +220,63 @@
       requestAnimationFrame(loop);
     }
 
-    // --- Touch input (pointer events for smoother, more consistent gestures) ---
-    let pointerDown = false;
+    // --- Gesture input ---
+    let down = false;
     let startX = 0;
     let startY = 0;
-    let startT = 0;
     let lastSwipeT = 0;
 
-    function canSwipeNow() {
-      const now = performance.now();
-      return (now - lastSwipeT) > SWIPE_COOLDOWN_MS;
-    }
-
-    function onGesture(dx, dy, dt) {
+    function trySwipe(dx, dy) {
       if (!running) return;
 
-      // Determine intent
       const absX = Math.abs(dx);
       const absY = Math.abs(dy);
-
-      // Ignore tiny moves / slow drags
-      if (dt > SWIPE_MAX_MS) return;
       if (Math.max(absX, absY) < SWIPE_MIN_PX) return;
 
       if (absX > absY) {
-        if (!canSwipeNow()) return;
-        lastSwipeT = performance.now();
+        const now = performance.now();
+        if ((now - lastSwipeT) < SWIPE_COOLDOWN_MS) return;
+        lastSwipeT = now;
         if (dx > 0) lane = Math.min(LANE_COUNT - 1, lane + 1);
         else        lane = Math.max(0, lane - 1);
-      } else {
-        // Upward swipe → jump
-        if (dy < 0 && !jumpY) {
-          vy = JUMP_VY;
-        }
+      } else if (dy < 0 && !jumpY) {
+        vy = JUMP_VY;
       }
     }
 
-    // Use pointer events when available (better than touch events on many browsers)
+    // Pointer events
     canvas.addEventListener("pointerdown", (e) => {
       if (!running) return;
-      if (e.pointerType === "mouse" && e.button !== 0) return;
-      pointerDown = true;
+      down = true;
       startX = e.clientX;
       startY = e.clientY;
-      startT = performance.now();
+      // Ensure we still get the pointerup even if the pointer leaves the canvas
       canvas.setPointerCapture?.(e.pointerId);
     });
 
     canvas.addEventListener("pointerup", (e) => {
-      if (!pointerDown) return;
-      pointerDown = false;
-      const dx = e.clientX - startX;
-      const dy = e.clientY - startY;
-      const dt = performance.now() - startT;
-      onGesture(dx, dy, dt);
+      if (!down) return;
+      down = false;
+      trySwipe(e.clientX - startX, e.clientY - startY);
     });
 
     canvas.addEventListener("pointercancel", () => {
-      pointerDown = false;
+      down = false;
     });
 
-    // Fallback for older iOS (still using touch events)
-    let touchStartX = 0;
-    let touchStartY = 0;
-    let touchStartT = 0;
-
+    // Touch fallback (some iOS Safari versions)
     canvas.addEventListener("touchstart", (e) => {
       if (!running) return;
-      touchStartX = e.touches[0].clientX;
-      touchStartY = e.touches[0].clientY;
-      touchStartT = performance.now();
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
     }, { passive: true });
 
     canvas.addEventListener("touchend", (e) => {
       if (!running) return;
-      const dx = e.changedTouches[0].clientX - touchStartX;
-      const dy = e.changedTouches[0].clientY - touchStartY;
-      const dt = performance.now() - touchStartT;
-      onGesture(dx, dy, dt);
+      trySwipe(
+        e.changedTouches[0].clientX - startX,
+        e.changedTouches[0].clientY - startY
+      );
     }, { passive: true });
 
     // --- Button input ---
