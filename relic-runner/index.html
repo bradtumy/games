@@ -14,6 +14,7 @@
     }
     canvas {
       display: block;
+      touch-action: none; /* let us fully control touch gestures */
     }
     #hud {
       position: fixed;
@@ -24,6 +25,7 @@
       display: flex;
       justify-content: space-between;
       font-weight: bold;
+      pointer-events: none;
     }
     #overlay {
       position: fixed;
@@ -75,6 +77,11 @@
     const HORIZON      = 0.2;   // horizon as a fraction of screen height
     const GROUND       = 0.8;   // player ground level as a fraction of screen height
 
+    // Swipe tuning
+    const SWIPE_MIN_PX = 28;    // minimum move before we consider it a swipe
+    const SWIPE_MAX_MS = 280;   // ignore very slow drags
+    const SWIPE_COOLDOWN_MS = 120; // prevent multiple lane changes from one gesture
+
     // --- Cached DOM references ---
     const canvas   = document.getElementById("canvas");
     const ctx      = canvas.getContext("2d");
@@ -101,10 +108,15 @@
     let lane, score, coins, running, vy, jumpY;
     let obstacles, coinArr;
 
+    // Smooth lane movement (visual + collision)
+    let lanePos; // float position in lane space [0..LANE_COUNT-1]
+    const LANE_LERP = 0.22; // closer to 1 snaps, closer to 0 eases
+
     // --- Game control ---
     function startGame() {
       if (running) return; // prevent double-start
       lane      = 1;
+      lanePos   = 1;
       score     = 0;
       coins     = 0;
       vy        = 0;
@@ -144,6 +156,9 @@
       ctx.fillStyle = "#111";
       ctx.fillRect(0, 0, W, H);
 
+      // Ease lane position toward target lane for smoother visuals and more forgiving collision
+      lanePos += (lane - lanePos) * LANE_LERP;
+
       // Draw obstacles and check collisions
       for (const obs of obstacles) {
         obs.z += SPEED;
@@ -151,10 +166,15 @@
         const oy = H * HORIZON + H * (GROUND - HORIZON) * obs.z;
         ctx.fillStyle = "gray";
         ctx.fillRect(ox - 20, oy - 20, 40, 40);
-        // Hit: same lane, near ground level, not in mid-jump
-        if (obs.lane === lane && obs.z > 0.8 && obs.z < 1 && !jumpY) {
-          endGame();
-          return;
+
+        // Hit: near ground level, not in mid-jump, and close to lane center.
+        // Using lanePos makes transitions feel fair while still requiring you to "be" in the lane.
+        if (obs.z > 0.8 && obs.z < 1 && !jumpY) {
+          const laneDelta = Math.abs(obs.lane - lanePos);
+          if (laneDelta < 0.35) {
+            endGame();
+            return;
+          }
         }
       }
 
@@ -168,10 +188,13 @@
         ctx.beginPath();
         ctx.arc(cx, cy, 10, 0, Math.PI * 2);
         ctx.fill();
-        if (coin.lane === lane && coin.z > 0.8 && coin.z < 1) {
-          coins++;
-          score += 10;
-          coin.z = 2; // mark as collected so it gets pruned below
+        if (coin.z > 0.8 && coin.z < 1) {
+          const laneDelta = Math.abs(coin.lane - lanePos);
+          if (laneDelta < 0.35) {
+            coins++;
+            score += 10;
+            coin.z = 2; // mark as collected so it gets pruned below
+          }
         }
       }
 
@@ -187,7 +210,7 @@
       }
 
       // Draw player
-      const px = W / 2 + (lane - 1) * LANE_SPREAD;
+      const px = W / 2 + (lanePos - 1) * LANE_SPREAD;
       const py = H * GROUND + jumpY;
       ctx.fillStyle = "blue";
       ctx.fillRect(px - 15, py - 30, 30, 40);
@@ -199,31 +222,84 @@
       requestAnimationFrame(loop);
     }
 
-    // --- Touch input ---
+    // --- Touch input (pointer events for smoother, more consistent gestures) ---
+    let pointerDown = false;
+    let startX = 0;
+    let startY = 0;
+    let startT = 0;
+    let lastSwipeT = 0;
+
+    function canSwipeNow() {
+      const now = performance.now();
+      return (now - lastSwipeT) > SWIPE_COOLDOWN_MS;
+    }
+
+    function onGesture(dx, dy, dt) {
+      if (!running) return;
+
+      // Determine intent
+      const absX = Math.abs(dx);
+      const absY = Math.abs(dy);
+
+      // Ignore tiny moves / slow drags
+      if (dt > SWIPE_MAX_MS) return;
+      if (Math.max(absX, absY) < SWIPE_MIN_PX) return;
+
+      if (absX > absY) {
+        if (!canSwipeNow()) return;
+        lastSwipeT = performance.now();
+        if (dx > 0) lane = Math.min(LANE_COUNT - 1, lane + 1);
+        else        lane = Math.max(0, lane - 1);
+      } else {
+        // Upward swipe → jump
+        if (dy < 0 && !jumpY) {
+          vy = JUMP_VY;
+        }
+      }
+    }
+
+    // Use pointer events when available (better than touch events on many browsers)
+    canvas.addEventListener("pointerdown", (e) => {
+      if (!running) return;
+      if (e.pointerType === "mouse" && e.button !== 0) return;
+      pointerDown = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      startT = performance.now();
+      canvas.setPointerCapture?.(e.pointerId);
+    });
+
+    canvas.addEventListener("pointerup", (e) => {
+      if (!pointerDown) return;
+      pointerDown = false;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      const dt = performance.now() - startT;
+      onGesture(dx, dy, dt);
+    });
+
+    canvas.addEventListener("pointercancel", () => {
+      pointerDown = false;
+    });
+
+    // Fallback for older iOS (still using touch events)
     let touchStartX = 0;
     let touchStartY = 0;
+    let touchStartT = 0;
 
-    window.addEventListener("touchstart", e => {
-      if (!running || e.target === startBtn) return;
+    canvas.addEventListener("touchstart", (e) => {
+      if (!running) return;
       touchStartX = e.touches[0].clientX;
       touchStartY = e.touches[0].clientY;
+      touchStartT = performance.now();
     }, { passive: true });
 
-    window.addEventListener("touchend", e => {
-      if (!running || e.target === startBtn) return;
+    canvas.addEventListener("touchend", (e) => {
+      if (!running) return;
       const dx = e.changedTouches[0].clientX - touchStartX;
       const dy = e.changedTouches[0].clientY - touchStartY;
-      if (Math.abs(dx) > Math.abs(dy)) {
-        // Horizontal swipe → change lane
-        if (dx > 0) {
-          lane = Math.min(LANE_COUNT - 1, lane + 1);
-        } else {
-          lane = Math.max(0, lane - 1);
-        }
-      } else if (dy < 0 && !jumpY) {
-        // Upward swipe → jump
-        vy = JUMP_VY;
-      }
+      const dt = performance.now() - touchStartT;
+      onGesture(dx, dy, dt);
     }, { passive: true });
 
     // --- Button input ---
