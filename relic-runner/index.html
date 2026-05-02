@@ -46,11 +46,11 @@ loop();
 }
 
 function spawn(){
-obs.push({lane:Math.floor(Math.random()3),z:0});
+obs.push({lane:Math.floor(Math.random()*3),z:0});
 if(Math.random()<.5){
-let l=Math.floor(Math.random()3);
+let l=Math.floor(Math.random()*3);
 for(let i=0;i<5;i++){
-coinArr.push({lane:l,z:-i.1});
+coinArr.push({lane:l,z:-i*0.1});
 }
 }
 }
@@ -66,8 +66,8 @@ x.fillStyle="#111";x.fillRect(0,0,W,H);
 
 for(let o of obs){
 o.z+=.02;
-let px=W/2+(o.lane-1)150o.z;
-let py=H.2+(H*.7)o.z;
+let px=W/2+(o.lane-1)*150*o.z;
+let py=H*.2+(H*.7)*o.z;
 x.fillStyle="gray";
 x.fillRect(px-20,py-20,40,40);
 
@@ -78,8 +78,8 @@ end();
 
 for(let c2 of coinArr){
 c2.z+=.02;
-let px=W/2+(c2.lane-1)150c2.z;
-let py=H.2+(H*.7)*c2.z;
+let px=W/2+(c2.lane-1)*150*c2.z;
+let py=H*.2+(H*.7)*c2.z;
 x.fillStyle="gold";
 x.beginPath();x.arc(px,py,10,0,6.28);x.fill();
 
@@ -93,8 +93,8 @@ y+=vy;vy+=.5;
 if(y>0){y=0;vy=0;}
 }
 
-let px=W/2+(lane-1)150;
-let py=H.8+y;
+let px=W/2+(lane-1)*150;
+let py=H*.8+y;
 
 x.fillStyle="blue";
 x.fillRect(px-15,py-30,30,40);
