@@ -1,1 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Relic Runner</title>
+<style>
+html,body{margin:0;padding:0;overflow:hidden;background:#111;font-family:Arial}
+canvas{width:100vw;height:100vh;display:block}
+#hud{position:fixed;top:10px;left:10px;right:10px;color:white;display:flex;justify-content:space-between;font-weight:bold}
+#overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;color:white;text-align:center}
+button{padding:12px 20px;border-radius:999px;border:0;background:#ffcc33;font-weight:bold}
+</style>
+</head>
+<body>
 
+<div id="hud">
+<div>Score: <span id="score">0</span></div>
+<div>Coins: <span id="coins">0</span></div>
+</div>
+
+<div id="overlay">
+<div>
+<h1>Relic Runner</h1>
+<p>Swipe left/right to move<br>Swipe up to jump</p>
+<button onclick="start()">Start</button>
+</div>
+</div>
+
+<canvas id="c"></canvas>
+
+<script>
+let c=document.getElementById("c"),x=c.getContext("2d");
+let W=innerWidth,H=innerHeight;
+c.width=W;c.height=H;
+
+let lane=1,score=0,coins=0,run=false,vy=0,y=0;
+
+let obs=[],coinArr=[];
+
+function start(){
+run=true;
+score=0;coins=0;obs=[];coinArr=[];
+document.getElementById("overlay").style.display="none";
+loop();
+}
+
+function spawn(){
+obs.push({lane:Math.floor(Math.random()3),z:0});
+if(Math.random()<.5){
+let l=Math.floor(Math.random()3);
+for(let i=0;i<5;i++){
+coinArr.push({lane:l,z:-i.1});
+}
+}
+}
+
+function loop(){
+if(!run)return;
+
+score+=.5;
+
+if(Math.random()<.02)spawn();
+
+x.fillStyle="#111";x.fillRect(0,0,W,H);
+
+for(let o of obs){
+o.z+=.02;
+let px=W/2+(o.lane-1)150o.z;
+let py=H.2+(H*.7)o.z;
+x.fillStyle="gray";
+x.fillRect(px-20,py-20,40,40);
+
+if(o.lane===lane&&o.z>.8&&o.z<1&&!y){
+end();
+}
+}
+
+for(let c2 of coinArr){
+c2.z+=.02;
+let px=W/2+(c2.lane-1)150c2.z;
+let py=H.2+(H*.7)*c2.z;
+x.fillStyle="gold";
+x.beginPath();x.arc(px,py,10,0,6.28);x.fill();
+
+if(c2.lane===lane&&c2.z>.8&&c2.z<1){
+coins++;score+=10;c2.z=2;
+}
+}
+
+if(vy||y){
+y+=vy;vy+=.5;
+if(y>0){y=0;vy=0;}
+}
+
+let px=W/2+(lane-1)150;
+let py=H.8+y;
+
+x.fillStyle="blue";
+x.fillRect(px-15,py-30,30,40);
+
+document.getElementById("score").innerText=Math.floor(score);
+document.getElementById("coins").innerText=coins;
+
+requestAnimationFrame(loop);
+}
+
+function end(){
+run=false;
+document.getElementById("overlay").style.display="flex";
+}
+
+let sx=0,sy=0;
+addEventListener("touchstart",e=>{
+sx=e.touches[0].clientX;
+sy=e.touches[0].clientY;
+});
+
+addEventListener("touchend",e=>{
+let dx=e.changedTouches[0].clientX-sx;
+let dy=e.changedTouches[0].clientY-sy;
+
+if(Math.abs(dx)>Math.abs(dy)){
+if(dx>0)lane=Math.min(2,lane+1);
+else lane=Math.max(0,lane-1);
+}else if(dy<0&&!y){
+vy=-12;
+}
+});
+</script>
+
+</body>
+</html>
